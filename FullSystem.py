@@ -1,14 +1,10 @@
 import cv2
 import numpy as np 
+import RPi.GPIO as GPIO   
+import time
+from time import sleep 
 from picamera.array import PiRGBArray
 from picamera import PiCamera
-import RPi.GPIO as GPIO          
-from time import sleep
-import time
- 
-print("\nCode started")
-
-GPIO.setmode(GPIO.BCM)
 
 def motor_gpio_setup(inA, inB, en, pwm_freq = 1000, duty_cycle = 80):
     GPIO.setup(inA,GPIO.OUT)
@@ -18,194 +14,50 @@ def motor_gpio_setup(inA, inB, en, pwm_freq = 1000, duty_cycle = 80):
     GPIO.output(inB,GPIO.LOW)
     GPIO.PWM(en,pwm_freq).start(duty_cycle)
 
-# Door 1 GPIO
-in1, in2 = 20, 16
-motor_gpio_setup(in1, in2, 21)
+def start_disk_motor(inA, inB):
+    GPIO.output(inA,GPIO.LOW)
+    GPIO.output(inB,GPIO.HIGH)
 
-# Door 2 GPIO
-in3, in4 = 23, 24
-motor_gpio_setup(in3, in4, 25)
-
-# Door 3 GPIO
-in5, in6 = 26, 19
-motor_gpio_setup(in5, in6, 13)
-
-# Door 4 GPIO
-in7, in8 = 9, 10
-motor_gpio_setup(in7, in8, 22)
-
-# Disk motor GPIO, disk motor duty cycle = 12, disk motor pwm freq = 13
-in9, in10, en5 = 17, 27, 18
-motor_gpio_setup(in7, in8, 22, 13, 12)
-
-print("\nGPIO INIT Complete")
-
-# Door States: open = 1, closed = 0
-door1State = door2State = door3State = door4State = 0
-timeDoorIsOpened = timeDoorShouldBeClosed = 0
+def stop_disk_motor(inA, inB):
+    GPIO.output(inA,GPIO.LOW)
+    GPIO.output(inB,GPIO.LOW)
 
 def open_door(inA, inB):
     # forward for duration y
     GPIO.output(inA,GPIO.LOW)
     GPIO.output(inB,GPIO.HIGH)
-    initialTime = int(round(time.time() * 1000))
+    initial_time = int(round(time.time() * 1000))
     if inA == 20:
-        openDoorAtTime = initialTime+350
-        while(int(round(time.time() * 1000))< openDoorAtTime):
+        open_door_time = initial_time + 350
+        while(int(round(time.time() * 1000))< open_door_time):
             pass
     else:
-        openDoorAtTime = initialTime+275
-        while(int(round(time.time() * 1000))< openDoorAtTime):
+        open_door_time = initial_time + 275
+        while(int(round(time.time() * 1000))< open_door_time):
             pass
-    # stop
-    GPIO.output(inA,GPIO.LOW)
+    GPIO.output(inA,GPIO.LOW) # stop
     GPIO.output(inB,GPIO.LOW)
-    return
     
 def close_door(inA, inB):    
     # forward for duration y
     GPIO.output(inA,GPIO.HIGH)
     GPIO.output(inB,GPIO.LOW)
-    initialTime = int(round(time.time() * 1000))
-    if inA == 20:
-        closeDoorAtTime = initialTime+40
-        while(int(round(time.time() * 1000))< closeDoorAtTime):
-            pass
-    if inA == 23:
-        closeDoorAtTime = initialTime+50
-        while(int(round(time.time() * 1000))< closeDoorAtTime):
-            pass
-    if inA == 26:
-        closeDoorAtTime = initialTime+50
-        while(int(round(time.time() * 1000))< closeDoorAtTime):
-            pass
-    if inA == 9:
-        closeDoorAtTime = initialTime+75
-        while(int(round(time.time() * 1000))< closeDoorAtTime):
-            pass
+    initial_time = int(round(time.time() * 1000))
+    delays = {20:40, 23:50, 26:50, 9:75}
+    close_door_time = initial_time + delays.get(inA)
+    while(int(round(time.time() * 1000))< close_door_time):
+        pass
     GPIO.output(inA,GPIO.LOW)
     GPIO.output(inB,GPIO.LOW)
-    return
 
-def start_disk_motor(inA, inB):
-    GPIO.output(inA,GPIO.LOW)
-    GPIO.output(inB,GPIO.HIGH)
-    return;
-
-def stop_disk_motor(inA, inB):
-    GPIO.output(inA,GPIO.LOW)
-    GPIO.output(inB,GPIO.LOW)
-    return;
-
-#Camera Initialization
-camera = PiCamera()
-camera.resolution = (160, 128)
-while camera.analog_gain < 1:
-    time.sleep(0.1)
-    print('Gain:' + str(camera.analog_gain))
-camera.shutter_speed = camera.exposure_speed
-camera.exposure_mode='auto'
-g = camera.awb_gains
-camera.awb_mode ='off'
-camera.awb_gains = g
-rawCapture = PiRGBArray(camera, size=(160, 128))
-
-print("\nCamera INIT Complete")
-
-x_blue = 3 #delta used for the H(Hue) field in HSV(Hue-Saturation-Value) for blue
-x_sat_lower_blue= 90 #lower blue saturation limit for HSV
-x_val_lower_blue = 100 #lower blue value limit for HSV
-
-#Average (experimentally collected) RGB values for blue gumball as it is at the top/middle/bottom of the chute
-blue_mask_top = np.uint8([[[100, 56, 26]]]) 
-blue_mask_mid = np.uint8([[[87, 50, 13]]])  
-blue_mask_bot = np.uint8([[[83, 60, 2]]])   
-
-#average blue mask values in HSV format
-hsvBlue_top = cv2.cvtColor(blue_mask_top,cv2.COLOR_BGR2HSV)
-hsvBlue_mid = cv2.cvtColor(blue_mask_mid,cv2.COLOR_BGR2HSV)
-hsvBlue_bot = cv2.cvtColor(blue_mask_bot,cv2.COLOR_BGR2HSV)
-
-#using numpy array(byte), to hold HSV(Hue-Saturation_Value) ranges
-lowerLimit_blue_top = np.uint8([hsvBlue_top[0][0][0]-x_blue,x_sat_lower_blue,x_val_lower_blue])
-upperLimit_blue_top = np.uint8([hsvblue_top[0][0][0]+x_blue,255,255])
-lowerLimit_blue_mid = np.uint8([hsvblue_mid[0][0][0]-x_blue,x_sat_lower_blue,x_val_lower_blue])
-upperLimit_blue_mid = np.uint8([hsvblue_mid[0][0][0]+x_blue,255,255])
-lowerLimit_blue_bot = np.uint8([hsvblue_bot[0][0][0]-x_blue,x_sat_lower_blue,x_val_lower_blue])
-upperLimit_blue_bot = np.uint8([hsvblue_bot[0][0][0]+x_blue,255,255])
-
-x_green = 5 #delta used for the H(Hue) field in HSV(Hue-Saturation-Value) for green
-x_sat_lower_green = 90 #lower green saturation limit for HSV
-x_val_lower_green = 90 #lower green value limit for HSV
-
-#Average (experimentally collected) RGB values for green gumball as it is at the top/middle/bottom of the chute
-green_mask_top = np.uint8([[[51, 116, 18]]])
-green_mask_mid = np.uint8([[[54, 86, 25]]])
-green_mask_bot = np.uint8([[[68, 115, 21]]])
-
-#average green mask values in HSV format
-hsvGreen_top = cv2.cvtColor(green_mask_top,cv2.COLOR_BGR2HSV)
-hsvGreen_mid = cv2.cvtColor(green_mask_mid,cv2.COLOR_BGR2HSV)
-hsvGreen_bot = cv2.cvtColor(green_mask_bot,cv2.COLOR_BGR2HSV)
-
-#using numpy array(byte), to hold HSV(Hue-Saturation_Value) ranges
-lowerLimit_green_top = np.uint8([hsvGreen_top[0][0][0]-x_green,x_sat_lower_green,x_val_lower_green])    
-upperLimit_green_top = np.uint8([hsvGreen_top[0][0][0]+x_green,255,255])
-lowerLimit_green_mid = np.uint8([hsvGreen_mid[0][0][0]-x_green,x_sat_lower_green,x_val_lower_green])
-upperLimit_green_mid = np.uint8([hsvGreen_mid[0][0][0]+x_green,255,255])
-lowerLimit_green_bot = np.uint8([hsvGreen_bot[0][0][0]-x_green,x_sat_lower_green,x_val_lower_green])
-upperLimit_green_bot = np.uint8([hsvGreen_bot[0][0][0]+x_green,255,255])
-
-x_yellow = 5 #delta used for the H(Hue) field in HSV(Hue-Saturation-Value) for yellow
-x_sat_lower_yellow = 100 #lower yellow saturation limit for HSV
-x_val_lower_yellow = 90  #lower yellow value limit for HSV
-
-#Average (experimentally collected) RGB values for yellow gumball as it is at the top/middle/bottom of the chute
-yellow_mask_top = np.uint8([[[18, 154, 162]]])
-yellow_mask_mid = np.uint8([[[30, 165, 170]]]) 
-yellow_mask_bot = np.uint8([[[50, 140, 140]]])
-
-#average yellow mask values in HSV format
-hsvYellow_top = cv2.cvtColor(yellow_mask_top,cv2.COLOR_BGR2HSV)
-hsvYellow_mid = cv2.cvtColor(yellow_mask_mid,cv2.COLOR_BGR2HSV)
-hsvYellow_bot = cv2.cvtColor(yellow_mask_bot,cv2.COLOR_BGR2HSV)
-
-#using numpy array(byte), to hold HSV(Hue-Saturation_Value) ranges
-lowerLimit_yellow_top = np.uint8([hsvYellow_top[0][0][0]-x_yellow,x_sat_lower_yellow,x_val_lower_yellow])    
-upperLimit_yellow_top = np.uint8([hsvYellow_top[0][0][0]+x_yellow,255,255])
-lowerLimit_yellow_mid = np.uint8([hsvYellow_mid[0][0][0]-x_yellow,x_sat_lower_yellow,x_val_lower_yellow])
-upperLimit_yellow_mid = np.uint8([hsvYellow_mid[0][0][0]+x_yellow,255,255])
-lowerLimit_yellow_bot = np.uint8([hsvYellow_bot[0][0][0]-x_yellow,x_sat_lower_yellow,x_val_lower_yellow])
-upperLimit_yellow_bot = np.uint8([hsvYellow_bot[0][0][0]+x_yellow,255,255])
-
-x_orange = 5 #delta used for the H(Hue) field in HSV(Hue-Saturation-Value) for orange
-x_sat_lower_orange = 100 #lower orange saturation limit for HSV
-x_val_lower_orange = 100 #lower orange value limit for HSV
-
-#Average (experimentally collected) RGB values for orange gumball as it is at the top/middle/bottom of the chute
-orange_mask_top = np.uint8([[[54, 108, 178]]])
-orange_mask_mid = np.uint8([[[54, 99, 149 ]]])
-orange_mask_bot = np.uint8([[[42, 113, 191]]])
-
-#average orange mask values in HSV format
-hsvOrange_top = cv2.cvtColor(orange_mask_top,cv2.COLOR_BGR2HSV)
-hsvOrange_mid = cv2.cvtColor(orange_mask_mid,cv2.COLOR_BGR2HSV)
-hsvOrange_bot = cv2.cvtColor(orange_mask_bot,cv2.COLOR_BGR2HSV)
-
-#using numpy array(byte), to hold HSV(Hue-Saturation_Value) ranges
-lowerLimit_orange_top = np.uint8([hsvOrange_top[0][0][0]-x_orange,x_sat_lower_orange,x_val_lower_orange])    
-upperLimit_orange_top = np.uint8([hsvOrange_top[0][0][0]+x_orange,255,255])
-lowerLimit_orange_mid = np.uint8([hsvOrange_mid[0][0][0]-x_orange,x_sat_lower_orange,x_val_lower_orange])
-upperLimit_orange_mid = np.uint8([hsvOrange_mid[0][0][0]+x_orange,255,255])
-lowerLimit_orange_bot = np.uint8([hsvOrange_bot[0][0][0]-x_orange,x_sat_lower_orange,x_val_lower_orange])
-upperLimit_orange_bot = np.uint8([hsvOrange_bot[0][0][0]+x_orange,255,255])
-
-/*
-def create_hsv_mask_limits(rgb_top, rgb_mid, rgb_bot, x_hue, x_sat, x_val):
-    hsv_top = cv2.cvtColor(rgb_top, cv2.COLOR_BGR2HSV)
-    hsv_mid = cv2.cvtColor(rgb_mid, cv2.COLOR_BGR2HSV)
-    hsv_bot = cv2.cvtColor(rgb_bot, cv2.COLOR_BGR2HSV)
-
+def create_hsv_mask_limits(color_mask_top, color_mask_mid, color_mask_bot, x_hue, x_sat, x_val):
+    # x_hue = hue delta, x_sat = lower saturation limit, x_val = lower value limit
+    # Average color mask values in HSV format
+    hsv_top = cv2.cvtColor(color_mask_top, cv2.COLOR_BGR2HSV)
+    hsv_mid = cv2.cvtColor(color_mask_mid, cv2.COLOR_BGR2HSV)
+    hsv_bot = cv2.cvtColor(color_mask_bot, cv2.COLOR_BGR2HSV)
+    
+    # Using numpy array(byte), to hold HSV(Hue-Saturation_Value) ranges
     lower_top = np.uint8([hsv_top[0][0][0] - x_hue, x_sat, x_val])
     upper_top = np.uint8([hsv_top[0][0][0] + x_hue, 255, 255])
     lower_mid = np.uint8([hsv_mid[0][0][0] - x_hue, x_sat, x_val])
@@ -214,155 +66,151 @@ def create_hsv_mask_limits(rgb_top, rgb_mid, rgb_bot, x_hue, x_sat, x_val):
     upper_bot = np.uint8([hsv_bot[0][0][0] + x_hue, 255, 255])
     return (lower_top, upper_top, lower_mid, upper_mid, lower_bot, upper_bot)
 
-# Blue
+def compute_mask_mean(lower_top, upper_top, lower_mid, upper_mid, lower_bot, upper_bot):
+    # Mask for top, middle, and bottom section 
+    top = cv2.inRange(hsv, lower_top, upper_top)
+    mid = cv2.inRange(hsv, lower_mid, upper_mid)
+    bot = cv2.inRange(hsv, lower_bot, upper_bot)
+    # Apply the mask to the original image to show only the detected color
+    mask = cv2.bitwise_or(cv2.bitwise_or(top, mid), bot)
+    return cv2.mean(mask)[0]
+
+
+print("\nCode started")
+
+GPIO.setmode(GPIO.BCM)
+
+# Motor GPIO setup
+in1, in2 = 20, 16  # Door 1
+in3, in4 = 23, 24  # Door 2 
+in5, in6 = 26, 19  # Door 3
+in7, in8 = 9, 10   # Door 4 
+in9, in10 = 17, 27 # Disk motor
+motor_gpio_setup(in1, in2, 21)
+motor_gpio_setup(in3, in4, 25)
+motor_gpio_setup(in5, in6, 13)
+motor_gpio_setup(in7, in8, 22)
+motor_gpio_setup(in7, in8, 18, pmw_freq = 13, duty_cycle = 12)
+
+print("\nGPIO INIT Complete")
+
+# Door States: open = 1, closed = 0
+door_states = [0, 0, 0, 0] 
+door_inputs = [(in1, in2), (in3, in4), (in5, in6), (in7, in8)]
+time_door_opened = time_door_should_close = 0
+
+#Camera initialization
+camera = PiCamera()
+camera.resolution = (160, 128)
+while camera.analog_gain < 1:
+    time.sleep(0.1)
+    print('Gain:' + str(camera.analog_gain))
+camera.shutter_speed = camera.exposure_speed
+camera.exposure_mode='auto'
+camera.awb_mode ='off'
+camera.awb_gains = camera.awb_gains
+raw_capture = PiRGBArray(camera, size=(160, 128))
+
+print("\nCamera INIT Complete")
+
+# Average (experimentally collected) blue gumball RGB values at top/middle/bottom of free fall
 blue_mask_top = np.uint8([[[100, 56, 26]]])
 blue_mask_mid = np.uint8([[[87, 50, 13]]])
 blue_mask_bot = np.uint8([[[83, 60, 2]]])
-(lowerLimit_blue_top, upperLimit_blue_top,
- lowerLimit_blue_mid, upperLimit_blue_mid,
- lowerLimit_blue_bot, upperLimit_blue_bot) = create_hsv_mask_limits(
+(lower_lim_blue_top, upper_lim_blue_top,
+ lower_lim_blue_mid, upper_lim_blue_mid,
+ lower_lim_blue_bot, upper_lim_blue_bot) = create_hsv_mask_limits(
     blue_mask_top, blue_mask_mid, blue_mask_bot, x_hue=3, x_sat=90, x_val=100)
 
-# Green
+# Average (experimentally collected) green gumball RGB values at top/middle/bottom of free fall
 green_mask_top = np.uint8([[[51, 116, 18]]])
 green_mask_mid = np.uint8([[[54, 86, 25]]])
 green_mask_bot = np.uint8([[[68, 115, 21]]])
-(lowerLimit_green_top, upperLimit_green_top,
- lowerLimit_green_mid, upperLimit_green_mid,
- lowerLimit_green_bot, upperLimit_green_bot) = create_hsv_mask_limits(
+(lower_lim_green_top, upper_lim_green_top,
+ lower_lim_green_mid, upper_lim_green_mid,
+ lower_lim_green_bot, upper_lim_green_bot) = create_hsv_mask_limits(
     green_mask_top, green_mask_mid, green_mask_bot, x_hue=5, x_sat=90, x_val=90)
 
-# Yellow
+# Average (experimentally collected) yellow gumball RGB values at top/middle/bottom of free fall
 yellow_mask_top = np.uint8([[[18, 154, 162]]])
-yellow_mask_mid = np.uint8([[[30, 165, 170]]])
+yellow_mask_mid = np.uint8([[[30, 165, 170]]]) 
 yellow_mask_bot = np.uint8([[[50, 140, 140]]])
-(lowerLimit_yellow_top, upperLimit_yellow_top,
- lowerLimit_yellow_mid, upperLimit_yellow_mid,
- lowerLimit_yellow_bot, upperLimit_yellow_bot) = create_hsv_mask_limits(
+(lower_lim_yellow_top, upper_lim_yellow_top,
+ lower_lim_yellow_mid, upper_lim_yellow_mid,
+ lower_lim_yellow_bot, upper_lim_yellow_bot) = create_hsv_mask_limits(
     yellow_mask_top, yellow_mask_mid, yellow_mask_bot, x_hue=5, x_sat=100, x_val=90)
 
-# Orange
+# Average (experimentally collected) orange gumball RGB values at top/middle/bottom of free fall
 orange_mask_top = np.uint8([[[54, 108, 178]]])
-orange_mask_mid = np.uint8([[[54, 99, 149]]])
+orange_mask_mid = np.uint8([[[54, 99, 149 ]]])
 orange_mask_bot = np.uint8([[[42, 113, 191]]])
-(lowerLimit_orange_top, upperLimit_orange_top,
- lowerLimit_orange_mid, upperLimit_orange_mid,
- lowerLimit_orange_bot, upperLimit_orange_bot) = create_hsv_mask_limits(
+(lower_lim_orange_top, upper_im_orange_top,
+ lower_lim_orange_mid, upper_lim_orange_mid,
+ lower_lim_orange_bot, upper_lim_orange_bot) = create_hsv_mask_limits(
     orange_mask_top, orange_mask_mid, orange_mask_bot, x_hue=5, x_sat=100, x_val=100)
-*/
-
+    
 print("\nHSV Thresholds INIT Complete")
 
-start_disk_motor(in9, in10)
-blue_gumball_counter = 0 
-green_gumball_counter = 0 
-yellow_gumball_counter = 0 
-orange_gumball_counter = 0 
+# ---------------------- Main Loop ---------------------- #
 
-for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+start_disk_motor(in9, in10)
+gumball_counters = {"blue": 0, "green": 0, "yellow": 0, "orange": 0}
+door_delays = [1100, 900, 750, 750]
+
+for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
     startTime = time.time()
     image = frame.array
+
+    # Convert image to HSV color space
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    
-    # Blue mask mean computation
-    blue_mask_top_ranging = cv2.inRange(hsv, lowerLimit_blue_top, upperLimit_blue_top)
-    blue_mask_mid_ranging = cv2.inRange(hsv, lowerLimit_blue_mid, upperLimit_blue_mid)
-    blue_mask_bot_ranging = cv2.inRange(hsv, lowerLimit_blue_bot, upperLimit_blue_bot)
-    blue_mask_temp = cv2.bitwise_or(blue_mask_top_ranging, blue_mask_mid_ranging)
-    blue_mask = cv2.bitwise_or(blue_mask_temp, blue_mask_bot_ranging)
-    blue_mask_mean = cv2.mean(blue_mask)[0]
 
-    # Green mask mean computation
-    green_mask_top_ranging = cv2.inRange(hsv, lowerLimit_green_top, upperLimit_green_top)
-    green_mask_mid_ranging = cv2.inRange(hsv, lowerLimit_green_mid, upperLimit_green_mid)
-    green_mask_bot_ranging = cv2.inRange(hsv, lowerLimit_green_bot, upperLimit_green_bot)
-    green_mask_temp = cv2.bitwise_or(green_mask_top_ranging, green_mask_mid_ranging)
-    green_mask = cv2.bitwise_or(green_mask_temp, green_mask_bot_ranging)
-    green_mask_mean = cv2.mean(green_mask)[0]
-        
-    # Yellow mask mean computation
-    yellow_mask_top_ranging = cv2.inRange(hsv, lowerLimit_yellow_top, upperLimit_yellow_top)
-    yellow_mask_mid_ranging = cv2.inRange(hsv, lowerLimit_yellow_mid, upperLimit_yellow_mid)
-    yellow_mask_bot_ranging = cv2.inRange(hsv, lowerLimit_yellow_bot, upperLimit_yellow_bot)
-    yellow_mask_temp = cv2.bitwise_or(yellow_mask_top_ranging, yellow_mask_mid_ranging)
-    yellow_mask = cv2.bitwise_or(yellow_mask_temp, yellow_mask_bot_ranging)
-    yellow_mask_mean = cv2.mean(yellow_mask)[0]
-    
-    # Orange mask mean computation
-    orange_mask_top_ranging = cv2.inRange(hsv, lowerLimit_orange_top, upperLimit_orange_top)
-    orange_mask_mid_ranging = cv2.inRange(hsv, lowerLimit_orange_mid, upperLimit_orange_mid)
-    orange_mask_bot_ranging = cv2.inRange(hsv, lowerLimit_orange_bot, upperLimit_orange_bot)
-    orange_mask_temp = cv2.bitwise_or(orange_mask_top_ranging, orange_mask_mid_ranging)
-    orange_mask = cv2.bitwise_or(orange_mask_temp, orange_mask_bot_ranging)
-    orange_mask_mean = cv2.mean(orange_mask)[0]
-    
+    # Masks mean computation
+    mask_means = { "blue": compute_mask_mean(lower_lim_blue_top, upper_lim_blue_top,
+                                       lower_lim_blue_mid, upper_lim_blue_mid,
+                                       lower_lim_blue_bot, upper_lim_blue_bot),
+                "green" : compute_mask_mean(lower_lim_green_top, upper_lim_green_top,
+                                        lower_lim_green_mid, upper_lim_green_mid,
+                                        lower_lim_green_bot, upper_lim_green_bot),
+                "yellow" : compute_mask_mean(lower_lim_yellow_top, upper_lim_yellow_top,
+                                         lower_lim_yellow_mid, upper_lim_yellow_mid,
+                                         lower_lim_yellow_bot, upper_lim_yellow_bot),
+                "orange" : compute_mask_mean(lower_lim_orange_top, upper_im_orange_top,
+                                         lower_lim_orange_mid, upper_lim_orange_mid,
+                                         lower_lim_orange_bot, upper_lim_orange_bot)}
+
     cv2.imshow("Frame", image)
-    
-    if (blue_mask_mean > 0.75) & (door1State==0): #If blue is detected and the corresponding door is closed
-        blue_gumball_counter += 1
-        print("blue")
-        timeDoorIsOpened = int(round(time.time() * 1000))
-        timeDoorShouldBeClosed = timeDoorIsOpened+1100
-        open_door(in1, in2)
-        door1State = 1
-      
-    if (green_mask_mean > 0.75) & (door2State==0): #If green is detected and the corresponding door is closed
-        green_gumball_counter += 1
-        print("green")
-        timeDoorIsOpened = int(round(time.time() * 1000))
-        timeDoorShouldBeClosed = timeDoorIsOpened+900
-        open_door(in3, in4)
-        door2State = 1
-        
-    if (yellow_mask_mean > 1) & (door3State == 0): #If yellow is detected and the corresponding door is closed
-        print("Yellow mask: " + str(yellow_mask_mean))
-        yellow_gumball_counter += 1
-        print("yellow")
-        timeDoorIsOpened = int(round(time.time() * 1000))
-        timeDoorShouldBeClosed = timeDoorIsOpened+750
-        open_door(in5, in6)
-        door3State = 1
-        
-    if (orange_mask_mean > 0.75) & (orange_mask_mean < 4) & (door4State == 0): #If orange is detected and the corresponding door is closed
-        print("Orange mask: " + str(orange_mask_mean))
-        orange_gumball_counter += 1
-        print("orange")
-        timeDoorIsOpened = int(round(time.time() * 1000))
-        timeDoorShouldBeClosed = timeDoorIsOpened+750
-        open_door(in7, in8)
-        door4State = 1
-    
-    if (int(round(time.time() * 1000))>=timeDoorShouldBeClosed):
-        if door1State == 1:
-            close_door(in1,in2)
-            door1State = 0
-            
-        if door2State == 1:
-            close_door(in3,in4)
-            door2State = 0
-            
-        if door3State == 1:
-            close_door(in5,in6)
-            door3State = 0
-        
-        if door4State == 1:
-            close_door(in7,in8)
-            door4State = 0
 
-    key = cv2.waitKey(1)
-    rawCapture.truncate(0)
-    if key == 27: # Exits loop when ESC key is pressed 
+    # Color dectection and door actuation
+    for i, (color, mean) in enumerate(mask_means.items()):
+        trigger = ((color == "blue" and mean > 0.75) or 
+                   (color == "green" and mean > 0.75) or
+                   (color == "yellow" and mean > 1) or
+                   (color == "orange" and 0.75 < mean < 4))
+        if trigger and door_states[i]:
+            print(color)
+            gumball_counters[color] += 1
+            time_door_opened = int(round(time.time() * 1000))
+            time_door_should_close = time_door_opened + door_delays[i]
+            open_door(*door_inputs[i])
+            door_states[i] = 1
+
+    # Close door after timeout
+    if (int(round(time.time() * 1000)) >= time_door_should_close):
+        for i in range(4):
+            if door_states[i]:
+                close_door(*door_inputs[i])
+                door_states[i] = 0
+
+    if  cv2.waitKey(1) == 27: # Exit with ESC key 
         break
-        
-    TotalTime = time.time()
-    print('Total Processing Time: '+str(TotalTime-startTime))
+    
+    raw_capture.truncate(0)    
+    print('Total Processing Time: ' + str(time.time()-startTime))
 
+# Shutdown 
 stop_disk_motor(in9, in10)
 cv2.destroyAllWindows()
 GPIO.cleanup()
 
-#Printing counters for each color:
-print("# blue: " + str(blue_gumball_counter))
-print("# green: " + str(green_gumball_counter))
-print("# yellow: " + str(yellow_gumball_counter))
-print("# orange: " + str(orange_gumball_counter))
+for color, count in gumball_counters.items():
+    print(f"# {color}: {count}")
