@@ -186,7 +186,7 @@ for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port
                    (color == "green" and mean > 0.75) or
                    (color == "yellow" and mean > 1) or
                    (color == "orange" and 0.75 < mean < 4))
-        if trigger and door_states[i]:
+        if trigger and door_states[i] == 0:
             print(color)
             gumball_counters[color] += 1
             time_door_opened = int(round(time.time() * 1000))
